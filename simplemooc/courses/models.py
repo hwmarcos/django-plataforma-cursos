@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 from simplemooc.core.mail import send_email_template
 
@@ -29,15 +30,58 @@ class Course(models.Model):
 
     @models.permalink
     def get_absolute_url(self):
-        return ('courses:details', (), {'slug':self.slug})
+        return ('courses:details', (), {'slug': self.slug})
+
+    def release_lessons(self):
+        today = timezone.now().date()
+        return self.lessons.filter(release_date__gte=today)
 
     class Meta:
         verbose_name = 'Curso'
         verbose_name_plural = 'Cursos'
         ordering = ['name']
 
-class Enrollment(models.Model):
+class Lesson(models.Model):
+    course = models.ForeignKey(Course, verbose_name='Curso', related_name='lessons')
+    name = models.CharField(verbose_name='Nome', max_length=100)
+    description = models.TextField(verbose_name='Descrição', blank=True)
+    number = models.IntegerField(verbose_name='Ordem', default=0, blank=True)
+    release_date = models.DateField(verbose_name='Data de Liberação', blank=True, null=True)
+    created_at = models.DateTimeField(verbose_name='Criado em', auto_now_add=True)
+    updated_at = models.DateTimeField(verbose_name='Atualizado em', auto_now=True)
 
+    def __str__(self):
+        return self.name
+
+    def is_available(self):
+        if self.release_date:
+            today = timezone.now().date()
+            return self.release_date >= today
+        return False
+
+    class Meta:
+        verbose_name = 'Aula'
+        verbose_name_plural = 'Aulas'
+        ordering = ['number']
+
+class Material(models.Model):
+    lesson = models.ForeignKey(Lesson, verbose_name='Aula', related_name='materials')
+    name = models.CharField('Nome', max_length=100)
+    embedded = models.TextField('Vídeo embedded', blank=True)
+    file = models.FileField(upload_to='lessons/materials', blank=True, null=True)
+
+    def is_embedded(self):
+        return bool(self.embedded)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = 'Material'
+        verbose_name_plural = 'Materiais'
+
+
+class Enrollment(models.Model):
     STATUS_CHOICES = (
         (0, 'Pendente'),
         (1, 'Aprovado'),
@@ -63,7 +107,6 @@ class Enrollment(models.Model):
         unique_together = (('user', 'course'),)
 
 class Announcement(models.Model):
-
     course = models.ForeignKey(Course, verbose_name='Curso', related_name='announcements')
     title = models.CharField('Título', max_length=100)
     content = models.TextField('Conteúdo')
@@ -79,7 +122,6 @@ class Announcement(models.Model):
         ordering = ['-created_at']
 
 class Comment(models.Model):
-
     announcement = models.ForeignKey(Announcement, verbose_name='Anúncio', related_name='comments')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name='usuário')
     comment = models.TextField('Comentário')
